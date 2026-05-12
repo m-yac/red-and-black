@@ -73,7 +73,10 @@ export class HUD {
       <button class="hud-toggle" type="button" aria-expanded="true">Players</button>
       <div class="hud-body">
         <div class="hud-rows"></div>
-        <button class="hud-add" type="button">+ Add player</button>
+        <div class="hud-add-row">
+          <button class="hud-add" type="button">+ Add player</button>
+          <span class="hud-disclaimer">* A single player avoids itself</span>
+        </div>
       </div>
     `;
     document.body.appendChild(this.root);
@@ -82,6 +85,7 @@ export class HUD {
     this.bodyEl = this.root.querySelector('.hud-body');
     this.rowsEl = this.root.querySelector('.hud-rows');
     this.addBtn = this.root.querySelector('.hud-add');
+    this.disclaimerEl = this.root.querySelector('.hud-disclaimer');
 
     this.toggleBtn.addEventListener('click', () => this.toggle());
     this.addBtn.addEventListener('click', () => {
@@ -105,6 +109,7 @@ export class HUD {
     this.rowsEl.innerHTML = '';
     this.configs.forEach((cfg, i) => this.rowsEl.appendChild(this.makeRow(cfg, i)));
     this.addBtn.disabled = this.configs.length >= MAX_PLAYERS;
+    this.disclaimerEl.style.display = this.configs.length === 1 ? '' : 'none';
   }
 
   makeRow(cfg, i) {

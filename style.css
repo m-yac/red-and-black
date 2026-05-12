@@ -163,6 +163,18 @@ canvas {
   color: #a00;
 }
 
+.hud-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-disclaimer {
+  color: #777;
+  font-size: 11px;
+  font-style: italic;
+}
+
 .hud-add {
   align-self: flex-start;
   padding: 4px 10px;

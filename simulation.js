@@ -81,7 +81,10 @@ export class Player {
       // If the square is unoccupied (i.e. `bits & 1 == 0`) and at most it is
       // targeted by this player (i.e. everything but `bits & this.bitmask` is
       // unset), then occupy that square and remember its targets
-      if ((bits | this.bitmask) == this.bitmask) {
+      // (Or, if avoidSelf is true, only do this if the square is entirely
+      // unoccupied)
+      if ((bits | this.bitmask) == this.bitmask && this.board.players.length != 1 ||
+          bits == 0 && this.board.players.length == 1) {
         this.board.bits.set(i, j, 1 | this.bitmask);
         this.board.maxOccupiedRadius = Math.max(this.board.maxOccupiedRadius, Math.ceil((L - 1) / 2));
         for (const [ti, tj] of this.K) {
