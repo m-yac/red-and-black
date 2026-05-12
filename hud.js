@@ -2,15 +2,38 @@
 // vector (dx, dy) and color. Changes rebuild the board from scratch.
 
 export const COLOR_PALETTE = [
-  { name: 'black',  bkg: '#111', txt: '#eee' },
-  { name: 'red',    bkg: '#f22', txt: '#111' },
-  { name: 'cyan',   bkg: '#2cf', txt: '#111' },
-  { name: 'green',  bkg: '#2c2', txt: '#111' },
-  { name: 'yellow', bkg: '#ee2', txt: '#111' },
-  { name: 'orange', bkg: '#f82', txt: '#111' },
+  { code: 'b', name: 'black',  bkg: '#111', txt: '#eee' },
+  { code: 'r', name: 'red',    bkg: '#f22', txt: '#111' },
+  { code: 'c', name: 'cyan',   bkg: '#2cf', txt: '#111' },
+  { code: 'g', name: 'green',  bkg: '#2c2', txt: '#111' },
+  { code: 'y', name: 'yellow', bkg: '#ee2', txt: '#111' },
+  { code: 'o', name: 'orange', bkg: '#f82', txt: '#111' },
 ];
 
 const MAX_PLAYERS = COLOR_PALETTE.length - 1;
+
+export function parsePlayersFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('players');
+  if (!raw) return null;
+  const configs = [];
+  for (const part of raw.split('_')) {
+    const [dxs, dys, code] = part.split('.');
+    const dx = parseInt(dxs, 10);
+    const dy = parseInt(dys, 10);
+    const color = COLOR_PALETTE.find((c) => c.code === code);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || !color) continue;
+    configs.push({ dx, dy, bkgClr: color.bkg, txtClr: color.txt });
+  }
+  return configs.length ? configs : null;
+}
+
+function encodePlayers(configs) {
+  return configs.map((c) => {
+    const color = COLOR_PALETTE.find((p) => p.bkg === c.bkgClr);
+    return `${c.dx}.${c.dy}.${color ? color.code : c.bkgClr}`;
+  }).join('_');
+}
 
 // Fairy chess leapers from the m,n table. m,n are |dx|,|dy| sorted.
 export const FAIRY_PIECES = [
@@ -196,6 +219,12 @@ export class HUD {
   apply() {
     this.board.reconfigure(this.configs);
     this.view.resetForNewBoard();
+    this.syncURL();
+  }
+
+  syncURL() {
+    const newUrl = `${window.location.pathname}?players=${encodePlayers(this.configs)}${window.location.hash}`;
+    window.history.replaceState(null, '', newUrl);
   }
 }
 
