@@ -47,7 +47,65 @@ export class View {
     // `undefined` means "reset to current radius on the next step".
     this.lastPrerenderedRadius = undefined;
 
+    // Pointer hover position in canvas pixels, or null. Cached per-color
+    // stripe patterns are built lazily for hover highlights.
+    this.hoverPos = null;
+    this.stripePatterns = new Map();
+    this.attachHoverListeners();
+
     window.addEventListener('resize', () => this.resize());
+  }
+
+  attachHoverListeners() {
+    const update = (e) => {
+      // Don't fight the pinch gesture — two-pointer touches are zooming.
+      if (e.pointerType === 'touch' && this.zoom.pointerEvts.size >= 2) {
+        this.hoverPos = null;
+      } else {
+        const rect = this.canvas.getBoundingClientRect();
+        const pr = window.devicePixelRatio || 1;
+        this.hoverPos = {
+          x: (e.clientX - rect.left) * pr,
+          y: (e.clientY - rect.top) * pr,
+        };
+      }
+      this.requestRender();
+    };
+    const clear = (e) => {
+      // Touch tap can persist briefly; mouse leave should clear.
+      if (e && e.pointerType === 'touch') return;
+      this.hoverPos = null;
+      this.requestRender();
+    };
+    this.canvas.addEventListener('pointermove', update);
+    this.canvas.addEventListener('pointerdown', update);
+    this.canvas.addEventListener('pointerleave', clear);
+    this.canvas.addEventListener('pointercancel', () => {
+      this.hoverPos = null;
+      this.requestRender();
+    });
+  }
+
+  getStripePattern(color) {
+    let p = this.stripePatterns.get(color);
+    if (p) return p;
+    const size = 12;
+    const tile = document.createElement('canvas');
+    tile.width = size;
+    tile.height = size;
+    const tc = tile.getContext('2d');
+    tc.strokeStyle = color;
+    tc.lineWidth = 3;
+    tc.lineCap = 'square';
+    tc.beginPath();
+    for (let k = -1; k <= 1; k++) {
+      tc.moveTo(k * size, size);
+      tc.lineTo((k + 1) * size, 0);
+    }
+    tc.stroke();
+    p = this.ctx.createPattern(tile, 'repeat');
+    this.stripePatterns.set(color, p);
+    return p;
   }
 
   resize() {
@@ -125,6 +183,9 @@ export class View {
     const imageAlpha = clamp01((FADE_HIGH - cellPx) / (FADE_HIGH - FADE_LOW));
     const liveAlpha = 1 - imageAlpha;
 
+    const hover = (liveAlpha > 0 && this.hoverPos)
+      ? this.resolveHover(w, h, cellPx) : null;
+    if (hover) this.drawHoverStripes(hover, w, h, cellPx, liveAlpha);
     if (imageAlpha > 0) this.drawPrerendered(w, h, cellPx, imageAlpha);
     if (liveAlpha > 0)  this.drawLiveCells(w, h, cellPx, liveAlpha);
   }
@@ -184,6 +245,34 @@ export class View {
     }
     ctx.globalAlpha = 1;
   }
+
+  resolveHover(w, h, cellPx) {
+    const hi = Math.round((this.hoverPos.x - w/2) / cellPx);
+    const hj = Math.round((this.hoverPos.y - h/2) / cellPx);
+    if (Math.abs(hi) > this.screenRadius || Math.abs(hj) > this.screenRadius) {
+      return null;
+    }
+    return { hi, hj, occupant: this.board.getOccupantPlayer(hi, hj) };
+  }
+
+  drawHoverStripes({ hi, hj, occupant }, w, h, cellPx, alpha) {
+    if (occupant === null) return;
+    const { ctx } = this;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.getStripePattern(occupant.bkgClr);
+    for (const [ti, tj] of occupant.K) {
+      this.drawStripedCell(hi + ti, hj + tj, w, h, cellPx);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  drawStripedCell(i, j, w, h, cellPx) {
+    const cx = i * cellPx + w/2;
+    const cy = j * cellPx + h/2;
+    const half = 0.5 * cellPx;
+    this.ctx.fillRect(cx - half, cy - half, 2 * half, 2 * half);
+  }
+
 }
 
 function clamp01(x) {
