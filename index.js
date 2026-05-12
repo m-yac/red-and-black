@@ -1,5 +1,6 @@
 import { Board } from './simulation.js';
 import { View } from './view.js';
+import { HUD } from './hud.js';
 
 const canvas = document.querySelector('canvas');
 
@@ -10,3 +11,5 @@ board.newPlayer(2, 1, '#f22', '#111');
 const view = new View(canvas, board);
 view.resize();
 view.render();
+
+new HUD(board, view);

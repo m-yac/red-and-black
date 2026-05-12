@@ -56,6 +56,14 @@ export class View {
     window.addEventListener('resize', () => this.resize());
   }
 
+  // Call after board.reconfigure() to refresh derived state and redraw.
+  resetForNewBoard() {
+    this.prerender.radius = -1;
+    this.prerender.markDirty();
+    this.lastPrerenderedRadius = undefined;
+    this.requestRender();
+  }
+
   attachHoverListeners() {
     const update = (e) => {
       // Don't fight the pinch gesture — two-pointer touches are zooming.

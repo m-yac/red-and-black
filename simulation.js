@@ -44,6 +44,15 @@ export class Board {
     return player;
   }
 
+  reconfigure(configs) {
+    this.bits = new BitGrid();
+    this.players = [];
+    this.maxOccupiedRadius = 0;
+    for (const cfg of configs) {
+      this.newPlayer(cfg.dx, cfg.dy, cfg.bkgClr, cfg.txtClr);
+    }
+  }
+
   doRound() {
     for (const player of this.players) {
       player.takeTurn();
