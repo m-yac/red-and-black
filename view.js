@@ -21,6 +21,11 @@ const ROUND_BUDGET_MS = 8;
 // this many cells, to amortize its O(R^2) regeneration cost.
 const PRERENDER_GROWTH_THRESHOLD = 32;
 
+// Source size for the hover-stripe tile. Large so we always scale down to
+// the on-screen tile size, which avoids the pixelation and jitter you'd get
+// from rebuilding (and integer-rounding) the tile each zoom.
+const STRIPE_TILE_SIZE = 256;
+
 // Number of leading cells (in spiral order) to label with their index, as a
 // visual debug aid. Alpha fades to zero by this index.
 const LABEL_COUNT = 256;
@@ -97,13 +102,14 @@ export class View {
   getStripePattern(color) {
     let p = this.stripePatterns.get(color);
     if (p) return p;
-    const size = 12;
+    // Render at a large fixed size so any reasonable down-scale stays smooth.
+    const size = STRIPE_TILE_SIZE;
     const tile = document.createElement('canvas');
     tile.width = size;
     tile.height = size;
     const tc = tile.getContext('2d');
     tc.strokeStyle = color;
-    tc.lineWidth = 3;
+    tc.lineWidth = size / 4;
     tc.lineCap = 'square';
     tc.beginPath();
     for (let k = -1; k <= 1; k++) {
@@ -267,7 +273,13 @@ export class View {
     if (occupant === null) return;
     const { ctx } = this;
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = this.getStripePattern(occupant.bkgClr);
+    // Tile spans cellPx/3 — 3 stripes per cell. Scale a fixed large source
+    // tile down smoothly so it doesn't pixelate or jitter as the user zooms.
+    // Anchored at the canvas center so stripes line up across adjacent cells.
+    const pattern = this.getStripePattern(occupant.bkgClr);
+    const s = (cellPx / 3) / STRIPE_TILE_SIZE;
+    pattern.setTransform(new DOMMatrix().translate(w/2, h/2).scale(s, s));
+    ctx.fillStyle = pattern;
     for (const [ti, tj] of occupant.K) {
       this.drawStripedCell(hi + ti, hj + tj, w, h, cellPx);
     }

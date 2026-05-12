@@ -129,11 +129,6 @@ export class HUD {
       o.textContent = `${p.name} (${p.m},${p.n})`;
       sel.appendChild(o);
     }
-    const customOpt = document.createElement('option');
-    customOpt.value = 'Custom';
-    customOpt.textContent = 'Custom';
-    sel.appendChild(customOpt);
-
     // Row 2: dx + dy
     let preview; // forward-declared, assigned below
     const dxIn = numberInput(cfg.dx, (v) => {
@@ -151,12 +146,12 @@ export class HUD {
 
     const syncPiece = () => {
       const piece = pieceForVector(cfg.dx, cfg.dy);
-      sel.value = piece ? `${piece.m},${piece.n}` : 'custom';
+      sel.value = piece ? `${piece.m},${piece.n}` : '';
     };
     syncPiece();
 
     sel.addEventListener('change', () => {
-      if (sel.value === 'custom') return;
+      if (!sel.value) return;
       const [m, n] = sel.value.split(',').map(Number);
       cfg.dx = m;
       cfg.dy = n;
