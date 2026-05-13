@@ -1,6 +1,8 @@
 // Expandable HUD for editing players. Each row controls one player's leaper
 // vector (dx, dy) and color. Changes rebuild the board from scratch.
 
+import { parseColorToU32 } from './prerender.js';
+
 export const COLOR_PALETTE = [
   { code: 'b', name: 'black',  bkg: '#111', txt: '#eee' },
   { code: 'r', name: 'red',    bkg: '#eb4145' /* oklch(0.6275 0.2064 24.3) */, txt: '#111' },
@@ -211,10 +213,11 @@ export class HUD {
       if (cfg.bkgClr === c.bkg) b.classList.add('selected');
       b.addEventListener('click', () => {
         if (taken) return;
+        const oldBkg = cfg.bkgClr;
         cfg.bkgClr = c.bkg;
         cfg.txtClr = c.txt;
+        this.recolorPlayer(i, oldBkg, c.bkg, c.txt);
         this.renderRows();
-        this.apply();
       });
       swatchRow.appendChild(b);
     }
@@ -246,6 +249,21 @@ export class HUD {
     this.board.reconfigure(this.configs);
     this.shownSeqCounts.clear();
     this.view.resetForNewBoard();
+    this.syncURL();
+    this.renderResults();
+  }
+
+  // Color-only edit: mutate the player in place and patch the prerender
+  // bitmap, so we don't throw away the simulation state.
+  recolorPlayer(idx, oldBkg, newBkg, newTxt) {
+    const player = this.board.players[idx];
+    if (!player || oldBkg === newBkg) return;
+    const oldU32 = player.clrU32 ?? parseColorToU32(oldBkg);
+    const newU32 = parseColorToU32(newBkg);
+    player.bkgClr = newBkg;
+    player.txtClr = newTxt;
+    player.clrU32 = newU32;
+    this.view.recolorPrerender(oldU32, newU32);
     this.syncURL();
     this.renderResults();
   }

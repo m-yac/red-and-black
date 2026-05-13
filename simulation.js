@@ -81,12 +81,14 @@ export class Player {
     this.K = [[dx, dy], [dy, dx], [-dy, dx], [-dx, dy], [-dx, -dy], [-dy, -dx], [dy, -dx], [dx, -dy]];
     this.m = -1;
     this.sequence = [];
+    this.radius = 0;
   }
 
   takeTurn() {
     for (let k = this.m+1; true; k++) {
       const [i, j, L] = this.squaresNotSeen.next().value;
       const bits = this.board.bits.get(i, j);
+      this.radius = Math.ceil((L - 1) / 2);
       // Here is where we differ from the Python script's approach:
       // If the square is unoccupied (i.e. `bits & 1 == 0`) and at most it is
       // targeted by this player (i.e. everything but `bits & this.bitmask` is
@@ -96,8 +98,7 @@ export class Player {
       if ((bits | this.bitmask) == this.bitmask && this.board.players.length != 1 ||
           bits == 0 && this.board.players.length == 1) {
         this.board.bits.set(i, j, 1 | this.bitmask);
-        const radius = Math.ceil((L - 1) / 2);
-        this.board.maxOccupiedRadius = Math.max(this.board.maxOccupiedRadius, radius);
+        this.board.maxOccupiedRadius = Math.max(this.board.maxOccupiedRadius, this.radius);
         for (const [ti, tj] of this.K) {
           const tv = this.board.bits.get(i + ti, j + tj);
           if (!(tv & 1) /* unoccupied */) {
@@ -105,14 +106,13 @@ export class Player {
           }
         }
         this.m = k;
-        this.sequence.push([k, radius]);
+        this.sequence.push([k, this.radius]);
         return;
       }
       // If we encounter a cell which is claimed by more than one player, (i.e.
       // is impossible to be occupied), then add it to the unoccupied sequence
       if (!this.board.isOccupied(i, j) && popcount32(this.board.bits.get(i, j)) > 1) {
-        const radius = Math.ceil((L - 1) / 2);
-        this.board.unoccupiedSequence.set(k, radius);
+        this.board.unoccupiedSequence.set(k, this.radius);
       }
     }
   }

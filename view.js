@@ -17,10 +17,6 @@ const BASE_SCALE = 1 / 128;
 // so the page stays responsive even while the board grows quickly.
 const ROUND_BUDGET_MS = 8;
 
-// Off-screen, only refresh the prerender bitmap once the board has grown by
-// this many cells, to amortize its O(R^2) regeneration cost.
-const PRERENDER_GROWTH_THRESHOLD = 32;
-
 // Source size for the hover-stripe tile. Large so we always scale down to
 // the on-screen tile size, which avoids the pixelation and jitter you'd get
 // from rebuilding (and integer-rounding) the tile each zoom.
@@ -48,10 +44,6 @@ export class View {
     this.renderQueued = false;
     this.roundsQueued = false;
 
-    // board.maxOccupiedRadius the last time we refreshed the prerender bitmap.
-    // `undefined` means "reset to current radius on the next step".
-    this.lastPrerenderedRadius = undefined;
-
     // Pointer hover position in canvas pixels, or null. Cached per-color
     // stripe patterns are built lazily for hover highlights.
     this.hoverPos = null;
@@ -62,11 +54,17 @@ export class View {
     window.addEventListener('resize', () => this.resize());
   }
 
+  // Patch the prerender bitmap in place for a color-only edit, avoiding
+  // a full board resimulation.
+  recolorPrerender(oldU32, newU32) {
+    this.prerender.recolor(oldU32, newU32);
+    this.requestRender();
+  }
+
   // Call after board.reconfigure() to refresh derived state and redraw.
   resetForNewBoard() {
     this.prerender.radius = -1;
     this.prerender.markDirty();
-    this.lastPrerenderedRadius = undefined;
     this.requestRender();
   }
 
@@ -152,28 +150,20 @@ export class View {
     this.roundsQueued = true;
     setTimeout(() => {
       this.roundsQueued = false;
-      if (this.lastPrerenderedRadius === undefined) {
-        this.lastPrerenderedRadius = this.board.maxOccupiedRadius;
-      }
       const start = performance.now();
       do {
         this.board.doRound();
-        // As soon as there's a clean ring of off-screen new cells cells, we're done
+        // As soon as there's a clean ring of off-screen new cells, we're done
         if (this.board.maxOccupiedRadius > this.screenRadius + 1) {
           this.prerender.markDirty();
-          this.lastPrerenderedRadius = undefined;
           this.requestRender();
           return;
         }
       } while (performance.now() - start < ROUND_BUDGET_MS);
-      // While the board is still trying to keep up, only re-prerender after
-      // enough growth to justify regenerating the whole bitmap.
-      if (this.board.maxOccupiedRadius - this.lastPrerenderedRadius
-          > PRERENDER_GROWTH_THRESHOLD) {
-        this.prerender.markDirty();
-        this.lastPrerenderedRadius = this.board.maxOccupiedRadius;
-        this.requestRender();
-      }
+      // Prerender updates are now progressive and band-only; nudging dirty
+      // after every batch collapses to one rebuild-in-flight at a time.
+      this.prerender.markDirty();
+      this.requestRender();
       this.requestAdditionalRounds();
     }, 0);
   }
