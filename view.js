@@ -223,30 +223,35 @@ export class View {
 
   drawLiveCells(w, h, cellPx, alpha) {
     const { ctx, board } = this;
+    const R = this.screenRadius;
+    const cx0 = w / 2;
+    const cy0 = h / 2;
     ctx.globalAlpha = alpha;
-    let idx = 0;
-    for (const [i, j, _] of squareSpiral(this.screenRadius)) {
-      const cx = i * cellPx + w/2;
-      const cy = j * cellPx + h/2;
-      const occupant = board.getOccupantPlayer(i, j);
-      let txtClr = '#000';
-      if (occupant !== null) {
-        txtClr = occupant.txtClr;
+    for (let j = -R; j <= R; j++) {
+      const cy = j * cellPx + cy0;
+      for (let i = -R; i <= R; i++) {
+        const occupant = board.getOccupantPlayer(i, j);
+        if (occupant === null) continue;
         ctx.beginPath();
-        ctx.arc(cx, cy, 0.48 * cellPx, 0, 2 * Math.PI);
+        ctx.arc(i * cellPx + cx0, cy, 0.48 * cellPx, 0, 2 * Math.PI);
         ctx.fillStyle = occupant.bkgClr;
         ctx.fill();
       }
-      if (idx < LABEL_COUNT) {
-        ctx.fillStyle = txtClr;
-        ctx.font = `${0.4 * cellPx}px serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        // Fades from 1 (clamped) at idx=0 to 0 at idx=LABEL_COUNT/2.
-        ctx.globalAlpha = (LABEL_COUNT - idx) / (LABEL_COUNT / 2);
-        ctx.fillText(`${idx}`, cx, cy);
-        ctx.globalAlpha = 1;
-      }
+    }
+    // Debug overlay: label the first LABEL_COUNT cells in spiral order. The
+    // 256th cell falls within radius 8 (17×17 = 289 ≥ 256), so a small spiral
+    // is enough — the cost of the generator is negligible at this size.
+    ctx.font = `${0.4 * cellPx}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let idx = 0;
+    for (const [i, j] of squareSpiral(8)) {
+      if (idx >= LABEL_COUNT) break;
+      const occupant = board.getOccupantPlayer(i, j);
+      ctx.fillStyle = occupant ? occupant.txtClr : '#000';
+      // Fades from 1 (clamped) at idx=0 to 0 at idx=LABEL_COUNT/2.
+      ctx.globalAlpha = (LABEL_COUNT - idx) / (LABEL_COUNT / 2);
+      ctx.fillText(`${idx}`, i * cellPx + cx0, j * cellPx + cy0);
       idx++;
     }
     ctx.globalAlpha = 1;

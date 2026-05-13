@@ -79,16 +79,41 @@ export class Player {
     this.txtClr = txtClr;
     this.idx = board.players.length;
     this.bitmask = 1 << (this.idx + 1);
-    this.squaresNotSeen = squareSpiral(); // g in the Python script
     this.K = [[dx, dy], [dy, dx], [-dy, dx], [-dx, dy], [-dx, -dy], [-dy, -dx], [dy, -dx], [dx, -dy]];
     this.m = -1;
     this.sequence = [];
     this.lastOccupiedRadius = 0;
+    // Inlined squareSpiral state. First takeTurn iteration yields the origin;
+    // subsequent iterations step one cell, then advance ring/side/step counters.
+    this.spI = 0; this.spJ = 0;       // last yielded position
+    this.spDi = 1; this.spDj = 0;     // direction for the next step
+    this.spL = 1;                      // current ring side-length (1,1,2,2,3,3,…)
+    this.spS = 0;                      // side index within ring (0 or 1)
+    this.spK = 0;                      // step index within side (0..L-1)
+    this.spStarted = false;            // false until origin has been yielded
   }
 
   takeTurn() {
     for (let k = this.m+1; true; k++) {
-      const [i, j, L] = this.squaresNotSeen.next().value;
+      let i, j, L;
+      if (!this.spStarted) {
+        this.spStarted = true;
+        i = 0; j = 0; L = 0;
+      } else {
+        this.spI += this.spDi;
+        this.spJ += this.spDj;
+        i = this.spI; j = this.spJ;
+        L = this.spL + ((this.spS === 1 || this.spK === this.spL - 1) ? 1 : 0);
+        if (++this.spK >= this.spL) {
+          this.spK = 0;
+          const ndi = this.spDj, ndj = -this.spDi;
+          this.spDi = ndi; this.spDj = ndj;
+          if (++this.spS >= 2) {
+            this.spS = 0;
+            this.spL++;
+          }
+        }
+      }
       const bits = this.board.bits.get(i, j);
       const cellRadius = Math.ceil((L - 1) / 2);
       // Here is where we differ from the Python script's approach:

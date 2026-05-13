@@ -16,15 +16,34 @@ export function parseColorToU32(clr) {
   return ((0xff << 24) | (b << 16) | (g << 8) | r) >>> 0;
 }
 
+// Growth factor applied to capR when the pixel buffer needs to resize. Larger
+// values mean fewer (but bigger) allocations and more idle memory.
+const CAP_GROWTH = 2;
+
 export class Prerender {
   constructor(board) {
     this.board = board;
+    // Double-buffered canvases: `canvas` is the live target view.js draws from.
+    // `back` is where we paint the next frame so we can GPU-blit the previous
+    // interior across resizes instead of re-uploading it.
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d');
+    this.back = document.createElement('canvas');
+    this.backCtx = this.back.getContext('2d');
     this.radius = -1;
     this.safeR = -1;
     this.dirty = false;
     this.work = null;
+    // Authoritative pixel buffer (RGBA packed little-endian). The canvas is a
+    // write-only mirror — we never call getImageData, which would force a slow
+    // GPU readback. stepRebuild writes into this buffer in place, so no per-
+    // rebuild allocation is needed.
+    //
+    // `capR` is the radius the buffer was sized for; it grows geometrically so
+    // most rebuilds reuse the existing allocation. Pixel for cell (i, j) lives
+    // at index (j + capR) * stride + (i + capR), where stride = 2*capR + 1.
+    this.capR = -1;
+    this.pixels = new Uint32Array(0);
   }
 
   markDirty() {
@@ -35,13 +54,24 @@ export class Prerender {
   // Lets color edits skip a full re-spiral of the board.
   recolor(oldU32, newU32) {
     if (this.radius < 0) return;
-    const size = this.canvas.width;
-    const imageData = this.ctx.getImageData(0, 0, size, size);
-    const buf = new Uint32Array(imageData.data.buffer);
-    for (let k = 0; k < buf.length; k++) {
-      if (buf[k] === oldU32) buf[k] = newU32;
+    const R = this.radius;
+    const stride = 2 * this.capR + 1;
+    const offset = this.capR - R;
+    const size = 2 * R + 1;
+    const buf = this.pixels;
+    // Only walk the valid (2R+1)² window — pixels outside it are stale junk
+    // from prior capacity-resizes and must not be touched.
+    for (let jj = 0; jj < size; jj++) {
+      const start = (jj + offset) * stride + offset;
+      const end = start + size;
+      for (let k = start; k < end; k++) {
+        if (buf[k] === oldU32) buf[k] = newU32;
+      }
     }
-    this.ctx.putImageData(imageData, 0, 0);
+    const imageData = new ImageData(
+      new Uint8ClampedArray(buf.buffer), stride, stride,
+    );
+    this.ctx.putImageData(imageData, -offset, -offset, offset, offset, size, size);
   }
 
   // Per-frame time budget for the progressive rebuild. Smaller = smoother
@@ -71,23 +101,35 @@ export class Prerender {
     const prevSafeR = this.safeR;
     const T = Math.min(prevSafeR + 1, oldR + 1);
 
-    const size = 2 * R + 1;
-    const buf = new Uint32Array(size * size);
-    // Seed with old pixels at the centered offset. We can't write to the
-    // live canvas yet — drawImage during the rebuild must keep using the
-    // old-radius bitmap, since this.radius hasn't moved.
-    if (oldR >= 0) {
-      const oldSize = 2 * oldR + 1;
-      const old = this.ctx.getImageData(0, 0, oldSize, oldSize);
-      const oldBuf = new Uint32Array(old.data.buffer);
-      const offset = R - oldR;
-      for (let jj = 0; jj < oldSize; jj++) {
-        buf.set(
-          oldBuf.subarray(jj * oldSize, (jj + 1) * oldSize),
-          (jj + offset) * size + offset,
-        );
+    // Grow the pixel buffer geometrically when R outgrows capR. Most rebuilds
+    // skip this branch entirely and just write in-place into the existing buf.
+    if (R > this.capR) {
+      const baseCap = this.capR < 0 ? 0 : this.capR;
+      const newCapR = Math.max(R, baseCap * CAP_GROWTH + 1);
+      const newStride = 2 * newCapR + 1;
+      const newPixels = new Uint32Array(newStride * newStride);
+      if (oldR >= 0) {
+        // Move the old centered window into the new centered offset.
+        const oldStride = 2 * this.capR + 1;
+        const oldOff = this.capR - oldR;
+        const newOff = newCapR - oldR;
+        const span = 2 * oldR + 1;
+        for (let jj = 0; jj < span; jj++) {
+          const srcStart = (jj + oldOff) * oldStride + oldOff;
+          newPixels.set(
+            this.pixels.subarray(srcStart, srcStart + span),
+            (jj + newOff) * newStride + newOff,
+          );
+        }
       }
+      this.pixels = newPixels;
+      this.capR = newCapR;
     }
+
+    // Cells with cheb < T are already correct in this.pixels from the prior
+    // commit, so no seeding is needed. stepRebuild will overwrite cells with
+    // cheb >= T (writing 0 for empty cells so junk from prior generations or
+    // beyond-oldR isn't carried over).
 
     // Snapshot fullyScannedRadius *now*. The simulation will keep advancing
     // during the scan, so cells in already-scanned rows could be filled in
@@ -95,12 +137,15 @@ export class Prerender {
     // (cheb > snapshot) get rescanned on a later update().
     const nextSafeR = this.board.fullyScannedRadius;
 
-    return { R, size, T, buf, j: -R, nextSafeR };
+    return { R, size: 2 * R + 1, T, j: -R, nextSafeR };
   }
 
   stepRebuild(w, budgetMs) {
-    const { R, size, T, buf } = w;
+    const { R, T } = w;
     const board = this.board;
+    const buf = this.pixels;
+    const stride = 2 * this.capR + 1;
+    const center = this.capR;
     const start = performance.now();
     while (w.j <= R) {
       const j = w.j;
@@ -109,7 +154,7 @@ export class Prerender {
       const iEnd1 = wide ? R : -T;
       const iStart2 = wide ? R + 1 : T;
       const iEnd2 = R;
-      const rowBase = (j + R) * size + R;
+      const rowBase = (j + center) * stride + center;
       for (let i = iStart1; i <= iEnd1; i++) {
         const occupant = board.getOccupantPlayer(i, j);
         if (occupant !== null) {
@@ -117,6 +162,8 @@ export class Prerender {
             occupant.clrU32 = parseColorToU32(occupant.bkgClr);
           }
           buf[rowBase + i] = occupant.clrU32;
+        } else {
+          buf[rowBase + i] = 0;
         }
       }
       for (let i = iStart2; i <= iEnd2; i++) {
@@ -126,6 +173,8 @@ export class Prerender {
             occupant.clrU32 = parseColorToU32(occupant.bkgClr);
           }
           buf[rowBase + i] = occupant.clrU32;
+        } else {
+          buf[rowBase + i] = 0;
         }
       }
       w.j++;
@@ -135,13 +184,61 @@ export class Prerender {
   }
 
   commitRebuild(w) {
-    this.canvas.width = w.size;
-    this.canvas.height = w.size;
+    const { R, size, T, nextSafeR } = w;
+    const oldR = this.radius;
+    const stride = 2 * this.capR + 1;
+    const bufOff = this.capR - R;  // imageData coord of canvas (0, 0)
+
+    // Write into the back canvas, then swap it to the front. Resizing a canvas
+    // wipes its contents, so we resize `back` (whose old contents we don't
+    // need) and leave the live `canvas` alone until the swap.
+    const dstCanvas = this.back;
+    const dstCtx = this.backCtx;
+    dstCanvas.width = size;
+    dstCanvas.height = size;
+
+    // Cells with chebyshev radius < T are still valid from the prior commit.
+    // GPU-blit them from the previous canvas into the centered offset of the
+    // new one. Everything outside this interior is stale and will be
+    // overwritten below.
+    if (oldR >= 0 && T > 0) {
+      const blitOffset = R - oldR;
+      dstCtx.drawImage(this.canvas, blitOffset, blitOffset);
+    }
+
+    // Upload only the dirty annulus (cheb >= T) — split into up to four
+    // rectangles around the preserved interior square. When T <= 0 nothing is
+    // preserved, so just upload the full (2R+1)² centered window.
+    //
+    // dx/dy are negative when capR > R, shifting the (stride × stride)
+    // imageData so the centered (2R+1)² window lines up with the canvas.
     const imageData = new ImageData(
-      new Uint8ClampedArray(w.buf.buffer), w.size, w.size,
+      new Uint8ClampedArray(this.pixels.buffer), stride, stride,
     );
-    this.ctx.putImageData(imageData, 0, 0);
-    this.radius = w.R;
-    this.safeR = w.nextSafeR;
+    const dx = -bufOff, dy = -bufOff;
+    if (T <= 0) {
+      dstCtx.putImageData(imageData, dx, dy, bufOff, bufOff, size, size);
+    } else {
+      const topH = R - T + 1;          // canvas rows [0, R-T]
+      const botY = R + T;              // canvas rows [R+T, size-1]
+      const botH = size - botY;
+      const midY = R - T + 1;          // canvas rows [R-T+1, R+T-1]
+      const midH = 2 * T - 1;
+      const leftW = R - T + 1;         // canvas cols [0, R-T]
+      const rightX = R + T;            // canvas cols [R+T, size-1]
+      const rightW = size - rightX;
+      dstCtx.putImageData(imageData, dx, dy, bufOff,          bufOff,          size,   topH);
+      dstCtx.putImageData(imageData, dx, dy, bufOff,          bufOff + botY,   size,   botH);
+      dstCtx.putImageData(imageData, dx, dy, bufOff,          bufOff + midY,   leftW,  midH);
+      dstCtx.putImageData(imageData, dx, dy, bufOff + rightX, bufOff + midY,   rightW, midH);
+    }
+
+    // Swap roles: the canvas we just wrote becomes the live one.
+    this.back = this.canvas;
+    this.backCtx = this.ctx;
+    this.canvas = dstCanvas;
+    this.ctx = dstCtx;
+    this.radius = R;
+    this.safeR = nextSafeR;
   }
 }
