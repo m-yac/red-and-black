@@ -92,6 +92,9 @@ export class HUD {
     `);
     this.resultsSection = makeSection('results', 'Results', false, `
       <div class="hud-results"></div>
+      <div class="hud-results-actions">
+        <button class="hud-save-png" type="button">Save as PNG Image</button>
+      </div>
     `);
     this.root = document.createElement('div');
     this.root.className = 'hud-stack';
@@ -102,6 +105,8 @@ export class HUD {
     this.addBtn = this.playersSection.querySelector('.hud-add');
     this.disclaimerEl = this.playersSection.querySelector('.hud-disclaimer');
     this.resultsEl = this.resultsSection.querySelector('.hud-results');
+    this.savePngBtn = this.resultsSection.querySelector('.hud-save-png');
+    this.savePngBtn.addEventListener('click', () => this.savePNG());
     // player index -> number of sequence entries currently shown (default SEQ_PREVIEW)
     this.shownSeqCounts = new Map();
     this.lastResultsAt = 0;
@@ -283,7 +288,7 @@ export class HUD {
       return;
     }
     this.lastResultsAt = now;
-    const R = Math.min(this.view.screenRadius, this.board.maxOccupiedRadius);
+    const R = Math.max(0, Math.min(this.view.screenRadius, this.board.fullyScannedRadius));
     const sideLength = 2 * R + 1;
     const cells = (2 * R + 1) * (2 * R + 1);
     const players = this.board.players;
@@ -328,7 +333,7 @@ export class HUD {
 
     const playerHTML = players.map((p, i) => {
       const piece = pieceForVector(p.dx, p.dy);
-      const pieceLabel = piece ? piece.name : `(${p.dx},${p.dy})-Leaper`;
+      const pieceLabel = piece ? piece.name : `(${p.dx},${p.dy})`;
       const colorEntry = COLOR_PALETTE.find((c) => c.bkg === p.bkgClr);
       const colorName = colorEntry ? capitalize(colorEntry.name) : '';
       const label = colorName ? `${colorName} ${pieceLabel}` : pieceLabel;
@@ -369,6 +374,38 @@ export class HUD {
         this.renderResults();
       });
     }
+  }
+
+  savePNG() {
+    this.view.prerender.update();
+    const src = this.view.prerender.canvas;
+    const fullR = this.view.prerender.radius;
+    if (!src || src.width === 0 || fullR < 0) return;
+    const R = Math.max(0, Math.min(this.view.screenRadius, this.board.maxOccupiedRadius, fullR));
+    const size = 2 * R + 1;
+    const offset = fullR - R;
+    const out = document.createElement('canvas');
+    out.width = size;
+    out.height = size;
+    out.getContext('2d').drawImage(src, offset, offset, size, size, 0, 0, size, size);
+    const name = this.configs.map((c) => {
+      const colorEntry = COLOR_PALETTE.find((p) => p.bkg === c.bkgClr);
+      const color = colorEntry ? colorEntry.name : 'x';
+      const piece = pieceForVector(c.dx, c.dy);
+      const pieceLabel = piece ? piece.name.toLowerCase() : `${c.dx}.${c.dy}`;
+      return `${color}_${pieceLabel}`;
+    }).join('_');
+    out.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${name}_${size}x${size}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
   }
 
   syncURL() {

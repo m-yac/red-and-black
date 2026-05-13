@@ -205,6 +205,22 @@ canvas {
   flex-direction: column;
   gap: 8px;
 }
+.hud-results-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+.hud-save-png {
+  padding: 4px 10px;
+  font: inherit;
+  border: 1px solid #ccc;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.hud-save-png:hover {
+  background: #eee;
+}
 .hud-results-general {
   display: flex;
   flex-direction: column;

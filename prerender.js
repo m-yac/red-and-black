@@ -22,7 +22,7 @@ export class Prerender {
     this.canvas = document.createElement('canvas');
     this.ctx = this.canvas.getContext('2d');
     this.radius = -1;
-    this.safeR = 0;
+    this.safeR = -1;
     this.dirty = false;
     this.work = null;
   }
@@ -63,12 +63,13 @@ export class Prerender {
 
   startRebuild(R) {
     const oldR = this.radius;
-    // Between the last commit and now, each player's spiral only advanced,
-    // so a cell at chebyshev C was newly filled only if some player had
-    // p.radius <= C at the last commit. Cells with C < prevSafeR are
-    // therefore guaranteed unchanged since then.
+    // safeR is the board.fullyScannedRadius captured at the last commit:
+    // every player had finished scanning every cell of chebyshev radius
+    // <= safeR, so those cells cannot have changed since. We rescan from
+    // chebyshev = safeR + 1 outward (or from the start, if the bitmap
+    // didn't extend that far).
     const prevSafeR = this.safeR;
-    const T = Math.min(prevSafeR, oldR + 1);
+    const T = Math.min(prevSafeR + 1, oldR + 1);
 
     const size = 2 * R + 1;
     const buf = new Uint32Array(size * size);
@@ -88,15 +89,11 @@ export class Prerender {
       }
     }
 
-    // Snapshot safeR *now*. The simulation will keep advancing during the
-    // scan, so cells in already-scanned rows could be filled in afterward.
-    // Using the start-of-scan minimum guarantees those cells (cheb >=
-    // that minimum) get rescanned on a later update().
-    let nextSafeR = Infinity;
-    for (const p of this.board.players) {
-      if (p.radius < nextSafeR) nextSafeR = p.radius;
-    }
-    if (!Number.isFinite(nextSafeR)) nextSafeR = 0;
+    // Snapshot fullyScannedRadius *now*. The simulation will keep advancing
+    // during the scan, so cells in already-scanned rows could be filled in
+    // afterward. Using the start-of-scan value guarantees those cells
+    // (cheb > snapshot) get rescanned on a later update().
+    const nextSafeR = this.board.fullyScannedRadius;
 
     return { R, size, T, buf, j: -R, nextSafeR };
   }

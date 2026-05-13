@@ -154,7 +154,7 @@ export class View {
       do {
         this.board.doRound();
         // As soon as there's a clean ring of off-screen new cells, we're done
-        if (this.board.maxOccupiedRadius > this.screenRadius + 1) {
+        if (this.board.fullyScannedRadius > this.screenRadius) {
           this.prerender.markDirty();
           this.requestRender();
           return;
@@ -180,7 +180,7 @@ export class View {
 
     // Cells-from-origin that just barely fit on screen.
     this.screenRadius = Math.ceil(Math.max(w, h) * totalScale / 2);
-    if (this.board.maxOccupiedRadius <= this.screenRadius + 1) {
+    if (this.board.fullyScannedRadius <= this.screenRadius) {
       this.requestAdditionalRounds();
     }
 
