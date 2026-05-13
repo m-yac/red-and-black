@@ -2,6 +2,12 @@
 
 import { BitGrid } from './bitGrid.js';
 
+function popcount32(n) {
+  n = n - ((n >> 1) & 0x55555555);
+  n = (n & 0x33333333) + ((n >> 2) & 0x33333333);
+  return (((n + (n >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+}
+
 export function* squareSpiral(r) {
   let i = 0; let j = 0; let di = 1; let dj = 0;
   yield [i, j, 0];
@@ -49,6 +55,7 @@ export class Board {
     this.bits = new BitGrid();
     this.players = [];
     this.maxOccupiedRadius = 0;
+    this.unoccupiedSequence = new Map();
     for (const cfg of configs) {
       this.newPlayer(cfg.dx, cfg.dy, cfg.bkgClr, cfg.txtClr);
     }
@@ -92,15 +99,18 @@ export class Player {
         const radius = Math.ceil((L - 1) / 2);
         this.board.maxOccupiedRadius = Math.max(this.board.maxOccupiedRadius, radius);
         for (const [ti, tj] of this.K) {
-          this.board.bits.modify(i + ti, j + tj, (v) => v | this.bitmask);
+          const tv = this.board.bits.get(i + ti, j + tj);
+          if (!(tv & 1) /* unoccupied */) {
+            this.board.bits.set(i + ti, j + tj, tv | this.bitmask);
+          }
         }
         this.m = k;
         this.sequence.push([k, radius]);
         return;
       }
-      // If we encounter a cell which is fully claimed, i.e. impossible to be
-      // occupied, add it to the unoccupied sequence
-      if (this.board.bits.get(i, j) == ((1 << this.board.players.length) - 1) << 1) {
+      // If we encounter a cell which is claimed by more than one player, (i.e.
+      // is impossible to be occupied), then add it to the unoccupied sequence
+      if (!this.board.isOccupied(i, j) && popcount32(this.board.bits.get(i, j)) > 1) {
         const radius = Math.ceil((L - 1) / 2);
         this.board.unoccupiedSequence.set(k, radius);
       }

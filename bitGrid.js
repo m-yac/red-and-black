@@ -20,16 +20,12 @@ export class BitGrid {
     return row[jj];
   }
 
-  modify(i, j, callback) {
+  set(i, j, v) {
     const ii = idx(i);
     const jj = idx(j);
     while (ii >= this.rows.length) this.rows.push([]);
     const row = this.rows[ii];
     while (jj >= row.length) row.push(0);
-    row[jj] = callback(row[jj]);
-  }
-
-  set(i, j, v) {
-    this.modify(i, j, () => v);
+    row[jj] = v;
   }
 }

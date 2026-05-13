@@ -266,6 +266,7 @@ export class HUD {
     }
     this.lastResultsAt = now;
     const R = Math.min(this.view.screenRadius, this.board.maxOccupiedRadius);
+    const sideLength = 2 * R + 1;
     const cells = (2 * R + 1) * (2 * R + 1);
     const players = this.board.players;
 
@@ -335,7 +336,7 @@ export class HUD {
 
     const general = `
       <div class="hud-results-general">
-        <div><span>Total cells:</span> ${foundCells.toLocaleString()} (${foundCells != cells ? 'approx. ' : ''}${R.toLocaleString()}x${R.toLocaleString()})</div>
+        <div><span>Total cells:</span> ${foundCells.toLocaleString()} (${foundCells != cells ? 'approx. ' : ''}${sideLength.toLocaleString()}x${sideLength.toLocaleString()})</div>
       </div>
     `;
 
