@@ -3,11 +3,11 @@
 
 export const COLOR_PALETTE = [
   { code: 'b', name: 'black',  bkg: '#111', txt: '#eee' },
-  { code: 'r', name: 'red',    bkg: '#f22', txt: '#111' },
-  { code: 'c', name: 'cyan',   bkg: '#2cf', txt: '#111' },
-  { code: 'g', name: 'green',  bkg: '#2c2', txt: '#111' },
-  { code: 'y', name: 'yellow', bkg: '#ee2', txt: '#111' },
-  { code: 'o', name: 'orange', bkg: '#f82', txt: '#111' },
+  { code: 'r', name: 'red',    bkg: '#eb4145' /* oklch(0.6275 0.2064 24.3) */, txt: '#111' },
+  { code: 'c', name: 'cyan',   bkg: '#05caff' /* oklch(0.7819 0.1479 225.17) */, txt: '#111' },
+  { code: 'g', name: 'green',  bkg: '#4cc747' /* oklch(0.7348 0.2004 142.63) */, txt: '#111' },
+  { code: 'y', name: 'yellow', bkg: '#ffd533' /* oklch(0.8841 0.1691 93.15) */, txt: '#111' },
+  { code: 'p', name: 'purple', bkg: '#785ef0' /* oklch(0.5873 0.2096 286.18) */, txt: '#111' },
 ];
 
 const MAX_PLAYERS = COLOR_PALETTE.length - 1;
