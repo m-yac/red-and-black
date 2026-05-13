@@ -289,10 +289,10 @@ export class HUD {
       if (shown > SEQ_PREVIEW) {
         links.push(`<a class="hud-seq-link" data-key="${key}" data-act="less">show less</a>`);
       }
-      const oeisQuery = ks.slice(0, 16).join('%2C+');
-      const oeisBtn = ks.length > 0
-        ? `<a class="hud-oeis" href="https://oeis.org/search?q=${oeisQuery}" target="_blank" rel="noopener">Search in OEIS</a>`
-        : '';
+      // const oeisQuery = ks.slice(0, 16).join('%2C+');
+      // const oeisBtn = ks.length > 0
+      //   ? `<a class="hud-oeis" href="https://oeis.org/search?q=${oeisQuery}" target="_blank" rel="noopener">Search in OEIS</a>`
+      //   : '';
       return `
         <div class="hud-result-row">
           <div class="hud-result-head">
@@ -304,7 +304,6 @@ export class HUD {
             <span class="hud-result-seq-vals">${seq.join(', ')}${remaining > 0 ? ', …' : ''}</span>
             ${links.join(' ')}
           </div>
-          ${oeisBtn}
         </div>
       `;
     };

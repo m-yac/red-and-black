@@ -1,8 +1,11 @@
 # `red-and-black`
 
-A simulator for the types of games described in the numberphile video [Amazing Chessboard Patterns](https://www.youtube.com/watch?v=UiX4CFIiegM) and [Amazing Chessboard Patterns (extra)](https://www.youtube.com/watch?v=VgmDuBCayPw) - i.e. games based on the sequences [A392177](https://oeis.org/A392177/) and [A392178](https://oeis.org/A392178/).
+A simulator for the types of games described in the numberphile video [Amazing Chessboard Patterns](https://www.youtube.com/watch?v=UiX4CFIiegM) and [Amazing Chessboard Patterns (extra)](https://www.youtube.com/watch?v=VgmDuBCayPw), meaning games of the form described in the following [OEIS](https://oeis.org/) sequences:
+- [A308885](https://oeis.org/A308885/) for one knight
+- [A392177](https://oeis.org/A392177/), [A392178](https://oeis.org/A392178/), and [A392179](https://oeis.org/A392179/) for two knights
+- [A395645](https://oeis.org/A395645/), [A395646](https://oeis.org/A395646/), [A395647](https://oeis.org/A395647/), and [A395648](https://oeis.org/A395648/) for three knights.
 
-The core is an adaptation of [the Python implementation on the OEIS for A392177](https://oeis.org/A392177/a392177_1.py.txt) in `simulator.js`, using my best attempt at a bespoke data structure in `bitGrid.js`.
+The core is `simulator.js`, which is an adaptation of [the Python implementation on the OEIS for A392177](https://oeis.org/A392177/a392177_1.py.txt). Pardon my weird bespoke data structure in `bitGrid.js`, I got perhaps a bit too excited about optimization.
 
 ## AI Disclosure
 
