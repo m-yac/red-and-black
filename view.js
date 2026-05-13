@@ -55,6 +55,7 @@ export class View {
     // Pointer hover position in canvas pixels, or null. Cached per-color
     // stripe patterns are built lazily for hover highlights.
     this.hoverPos = null;
+    this.onRender = null;
     this.stripePatterns = new Map();
     this.attachHoverListeners();
 
@@ -157,17 +158,16 @@ export class View {
       const start = performance.now();
       do {
         this.board.doRound();
-        // As soon as new cells become visible, stop stepping and redraw —
-        // every additional cell would be on-screen and the user should see it.
-        if (this.screenRadius < this.board.maxOccupiedRadius) {
+        // As soon as there's a clean ring of off-screen new cells cells, we're done
+        if (this.board.maxOccupiedRadius > this.screenRadius + 1) {
           this.prerender.markDirty();
           this.lastPrerenderedRadius = undefined;
           this.requestRender();
           return;
         }
       } while (performance.now() - start < ROUND_BUDGET_MS);
-      // While the board is growing off-screen, only re-prerender after enough
-      // growth to justify regenerating the bitmap.
+      // While the board is still trying to keep up, only re-prerender after
+      // enough growth to justify regenerating the whole bitmap.
       if (this.board.maxOccupiedRadius - this.lastPrerenderedRadius
           > PRERENDER_GROWTH_THRESHOLD) {
         this.prerender.markDirty();
@@ -190,7 +190,7 @@ export class View {
 
     // Cells-from-origin that just barely fit on screen.
     this.screenRadius = Math.ceil(Math.max(w, h) * totalScale / 2);
-    if (this.board.maxOccupiedRadius <= this.screenRadius) {
+    if (this.board.maxOccupiedRadius <= this.screenRadius + 1) {
       this.requestAdditionalRounds();
     }
 
@@ -202,6 +202,8 @@ export class View {
     if (hover) this.drawHoverStripes(hover, w, h, cellPx, liveAlpha);
     if (imageAlpha > 0) this.drawPrerendered(w, h, cellPx, imageAlpha);
     if (liveAlpha > 0)  this.drawLiveCells(w, h, cellPx, liveAlpha);
+
+    if (this.onRender) this.onRender();
   }
 
   drawCheckerboard(w, h, cellPx) {

@@ -17,4 +17,5 @@ const view = new View(canvas, board);
 view.resize();
 view.render();
 
-new HUD(board, view);
+const hud = new HUD(board, view);
+view.onRender = () => hud.renderResults();

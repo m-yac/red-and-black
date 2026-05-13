@@ -36,22 +36,36 @@ function encodePlayers(configs) {
 }
 
 // Fairy chess leapers from the m,n table. m,n are |dx|,|dy| sorted.
-export const FAIRY_PIECES = [
-  { name: 'Wazir',        m: 0, n: 1 },
-  { name: 'Dabbaba',      m: 0, n: 2 },
-  { name: 'Threeleaper',  m: 0, n: 3 },
-  { name: 'Fourleaper',   m: 0, n: 4 },
-  { name: 'Ferz',         m: 1, n: 1 },
-  { name: 'Knight',       m: 1, n: 2 },
-  { name: 'Camel',        m: 1, n: 3 },
-  { name: 'Giraffe',      m: 1, n: 4 },
-  { name: 'Alfil',        m: 2, n: 2 },
-  { name: 'Zebra',        m: 2, n: 3 },
-  { name: 'Stag',         m: 2, n: 4 },
-  { name: 'Tripper',      m: 3, n: 3 },
-  { name: 'Antelope',     m: 3, n: 4 },
-  { name: 'Commuter',     m: 4, n: 4 },
-];
+const FAIRY_PIECE_GROUPS = {
+  '(n,n)': [
+    { name: 'Ferz',         m: 1, n: 1 },
+    { name: 'Alfil',        m: 2, n: 2 },
+    { name: 'Tripper',      m: 3, n: 3 },
+    { name: 'Commuter',     m: 4, n: 4 },
+  ],
+  '(n,n+1)': [
+    { name: 'Wazir',        m: 0, n: 1 },
+    { name: 'Knight',       m: 1, n: 2 },
+    { name: 'Zebra',        m: 2, n: 3 },
+    { name: 'Antelope',     m: 3, n: 4 },
+  ],
+  '(n,n+2)': [
+    { name: 'Dabbaba',      m: 0, n: 2 },
+    { name: 'Camel',        m: 1, n: 3 },
+    { name: 'Stag',         m: 2, n: 4 },
+  ],
+  '(n,n+3)': [
+    { name: 'Giraffe',      m: 1, n: 4 },
+  ],
+  '(n,n+5)': [
+    { name: 'Flamingo',     m: 1, n: 6 },
+  ],
+};
+export const FAIRY_PIECES = Object.values(FAIRY_PIECE_GROUPS).flat();
+
+function capitalize(s) {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
 
 function pieceForVector(dx, dy) {
   const a = Math.min(Math.abs(dx), Math.abs(dy));
@@ -67,27 +81,39 @@ export class HUD {
       dx: p.dx, dy: p.dy, bkgClr: p.bkgClr, txtClr: p.txtClr,
     }));
 
-    this.root = document.createElement('div');
-    this.root.className = 'hud hud-open';
-    this.root.innerHTML = `
-      <button class="hud-toggle" type="button" aria-expanded="true">Players</button>
-      <div class="hud-body">
-        <div class="hud-rows"></div>
-        <div class="hud-add-row">
-          <button class="hud-add" type="button">+ Add player</button>
-          <span class="hud-disclaimer">* A single player avoids itself</span>
-        </div>
+    this.playersSection = makeSection('players', 'Players', true, `
+      <div class="hud-rows"></div>
+      <div class="hud-add-row">
+        <button class="hud-add" type="button">+ Add player</button>
+        <span class="hud-disclaimer">* A single player avoids itself</span>
       </div>
-    `;
+    `);
+    this.resultsSection = makeSection('results', 'Results', false, `
+      <div class="hud-results"></div>
+    `);
+    this.root = document.createElement('div');
+    this.root.className = 'hud-stack';
+    this.root.append(this.playersSection, this.resultsSection);
     document.body.appendChild(this.root);
 
-    this.toggleBtn = this.root.querySelector('.hud-toggle');
-    this.bodyEl = this.root.querySelector('.hud-body');
-    this.rowsEl = this.root.querySelector('.hud-rows');
-    this.addBtn = this.root.querySelector('.hud-add');
-    this.disclaimerEl = this.root.querySelector('.hud-disclaimer');
+    this.rowsEl = this.playersSection.querySelector('.hud-rows');
+    this.addBtn = this.playersSection.querySelector('.hud-add');
+    this.disclaimerEl = this.playersSection.querySelector('.hud-disclaimer');
+    this.resultsEl = this.resultsSection.querySelector('.hud-results');
+    // player index -> number of sequence entries currently shown (default SEQ_PREVIEW)
+    this.shownSeqCounts = new Map();
+    this.lastResultsAt = 0;
+    this.resultsTimer = null;
 
-    this.toggleBtn.addEventListener('click', () => this.toggle());
+    for (const section of [this.playersSection, this.resultsSection]) {
+      const btn = section.querySelector('.hud-toggle');
+      btn.addEventListener('click', () => {
+        const open = section.classList.toggle('hud-open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (section === this.resultsSection && open) this.renderResults();
+      });
+    }
+
     this.addBtn.addEventListener('click', () => {
       if (this.configs.length >= MAX_PLAYERS) return;
       const used = new Set(this.configs.map((c) => c.bkgClr));
@@ -98,11 +124,6 @@ export class HUD {
     });
 
     this.renderRows();
-  }
-
-  toggle() {
-    const open = this.root.classList.toggle('hud-open');
-    this.toggleBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
   renderRows() {
@@ -123,11 +144,16 @@ export class HUD {
     // Row 1: piece dropdown
     const sel = document.createElement('select');
     sel.className = 'hud-piece';
-    for (const p of FAIRY_PIECES) {
-      const o = document.createElement('option');
-      o.value = `${p.m},${p.n}`;
-      o.textContent = `${p.name} (${p.m},${p.n})`;
-      sel.appendChild(o);
+    for (const [gp, ps] of Object.entries(FAIRY_PIECE_GROUPS)) {
+      const og = document.createElement('optgroup');
+      og.label = `${gp} Leapers`;
+      for (const p of ps) {
+        const o = document.createElement('option');
+        o.value = `${p.m},${p.n}`;
+        o.textContent = `${p.name} (${p.m},${p.n})`;
+        og.append(o);
+      }
+      sel.appendChild(og);
     }
     // Row 2: dx + dy
     let preview; // forward-declared, assigned below
@@ -218,14 +244,130 @@ export class HUD {
 
   apply() {
     this.board.reconfigure(this.configs);
+    this.shownSeqCounts.clear();
     this.view.resetForNewBoard();
     this.syncURL();
+    this.renderResults();
+  }
+
+  renderResults() {
+    if (!this.resultsSection.classList.contains('hud-open')) return;
+    // Throttle to ~4 Hz: getStats walks O(R^2) cells, too costly per rAF.
+    const now = performance.now();
+    const minGap = 250;
+    if (now - this.lastResultsAt < minGap) {
+      if (!this.resultsTimer) {
+        this.resultsTimer = setTimeout(() => {
+          this.resultsTimer = null;
+          this.renderResults();
+        }, minGap - (now - this.lastResultsAt));
+      }
+      return;
+    }
+    this.lastResultsAt = now;
+    const R = Math.min(this.view.screenRadius, this.board.maxOccupiedRadius);
+    const cells = (2 * R + 1) * (2 * R + 1);
+    const players = this.board.players;
+
+    const SEQ_PREVIEW = 20;
+    const SEQ_STEP = 100;
+
+    let foundCells = 0;
+    const renderRow = (key, headHTML, ks) => {
+      const count = ks.length;
+      foundCells += count;
+      const pct = cells > 0 ? (100 * count / cells) : 0;
+      const shown = Math.min(count, this.shownSeqCounts.get(key) ?? SEQ_PREVIEW);
+      const seq = ks.slice(0, shown);
+      const remaining = count - shown;
+      const more = Math.min(SEQ_STEP, remaining);
+      const links = [];
+      if (more > 0) {
+        links.push(`<a class="hud-seq-link" data-key="${key}" data-act="more">show ${more} more</a>`);
+      }
+      if (shown > SEQ_PREVIEW) {
+        links.push(`<a class="hud-seq-link" data-key="${key}" data-act="less">show less</a>`);
+      }
+      const oeisQuery = ks.slice(0, 16).join('%2C+');
+      const oeisBtn = ks.length > 0
+        ? `<a class="hud-oeis" href="https://oeis.org/search?q=${oeisQuery}" target="_blank" rel="noopener">Search in OEIS</a>`
+        : '';
+      return `
+        <div class="hud-result-row">
+          <div class="hud-result-head">
+            ${headHTML}
+            <span class="hud-result-pct">${pct.toFixed(2)}% (${count.toLocaleString()})</span>
+          </div>
+          <div class="hud-result-seq">
+            <span class="hud-result-seq-label">sequence:</span>
+            <span class="hud-result-seq-vals">${seq.join(', ')}${remaining > 0 ? ', …' : ''}</span>
+            ${links.join(' ')}
+          </div>
+          ${oeisBtn}
+        </div>
+      `;
+    };
+
+    const playerHTML = players.map((p, i) => {
+      const piece = pieceForVector(p.dx, p.dy);
+      const pieceLabel = piece ? piece.name : `(${p.dx},${p.dy})-Leaper`;
+      const colorEntry = COLOR_PALETTE.find((c) => c.bkg === p.bkgClr);
+      const colorName = colorEntry ? capitalize(colorEntry.name) : '';
+      const label = colorName ? `${colorName} ${pieceLabel}` : pieceLabel;
+      const ks = [];
+      for (const [k, kR] of p.sequence) {
+        if (kR <= R) ks.push(k);
+      }
+      const head = `
+        <span class="hud-result-dot" style="background:${p.bkgClr}"></span>
+        <span class="hud-result-name">${label}</span>
+      `;
+      return renderRow(`p${i}`, head, ks);
+    }).join('');
+
+    const unoccKs = [];
+    for (const [k, kR] of this.board.unoccupiedSequence) {
+      if (kR <= R) unoccKs.push(k);
+    }
+    unoccKs.sort((a, b) => a - b);
+    const unoccHead = `<span class="hud-result-name">Unoccupied</span>`;
+    const unoccupiedHTML = renderRow('unocc', unoccHead, unoccKs);
+
+    const general = `
+      <div class="hud-results-general">
+        <div><span>Total cells:</span> ${foundCells.toLocaleString()} (${foundCells != cells ? 'approx. ' : ''}${R.toLocaleString()}x${R.toLocaleString()})</div>
+      </div>
+    `;
+
+    this.resultsEl.innerHTML = playerHTML + unoccupiedHTML + general;
+
+    for (const link of this.resultsEl.querySelectorAll('.hud-seq-link')) {
+      link.addEventListener('click', () => {
+        const key = link.getAttribute('data-key');
+        const act = link.getAttribute('data-act');
+        const cur = this.shownSeqCounts.get(key) ?? SEQ_PREVIEW;
+        if (act === 'more') this.shownSeqCounts.set(key, cur + SEQ_STEP);
+        else this.shownSeqCounts.set(key, SEQ_PREVIEW);
+        this.renderResults();
+      });
+    }
   }
 
   syncURL() {
     const newUrl = `${window.location.pathname}?players=${encodePlayers(this.configs)}${window.location.hash}`;
     window.history.replaceState(null, '', newUrl);
   }
+}
+
+function makeSection(name, label, openByDefault, innerHTML) {
+  const el = document.createElement('div');
+  el.className = `hud${openByDefault ? ' hud-open' : ''}`;
+  el.dataset.section = name;
+  el.innerHTML = `
+    <button class="hud-toggle" type="button" aria-expanded="${openByDefault}">${label}</button>
+    <div class="hud-body">${innerHTML}</div>
+  `;
+  return el;
 }
 
 function numberInput(value, onChange) {

@@ -10,7 +10,7 @@ export function* squareSpiral(r) {
       for (let k = 0; k < L; k++) {
         i += di;
         j += dj;
-        yield [i, j, L];
+        yield [i, j, L + ((s == 1 || k == L-1) ? 1 : 0)];
       }
       [di, dj] = [dj, -di]
       if (r !== undefined && L == 2 * r + 1) { return; }
@@ -23,6 +23,7 @@ export class Board {
     this.bits = new BitGrid();
     this.players = [];
     this.maxOccupiedRadius = 0;
+    this.unoccupiedSequence = new Map();
   }
 
   isOccupied(i, j) {
@@ -71,10 +72,12 @@ export class Player {
     this.bitmask = 1 << (this.idx + 1);
     this.squaresNotSeen = squareSpiral(); // g in the Python script
     this.K = [[dx, dy], [dy, dx], [-dy, dx], [-dx, dy], [-dx, -dy], [-dy, -dx], [dy, -dx], [dx, -dy]];
+    this.m = -1;
+    this.sequence = [];
   }
 
   takeTurn() {
-    while (true) {
+    for (let k = this.m+1; true; k++) {
       const [i, j, L] = this.squaresNotSeen.next().value;
       const bits = this.board.bits.get(i, j);
       // Here is where we differ from the Python script's approach:
@@ -86,11 +89,20 @@ export class Player {
       if ((bits | this.bitmask) == this.bitmask && this.board.players.length != 1 ||
           bits == 0 && this.board.players.length == 1) {
         this.board.bits.set(i, j, 1 | this.bitmask);
-        this.board.maxOccupiedRadius = Math.max(this.board.maxOccupiedRadius, Math.ceil((L - 1) / 2));
+        const radius = Math.ceil((L - 1) / 2);
+        this.board.maxOccupiedRadius = Math.max(this.board.maxOccupiedRadius, radius);
         for (const [ti, tj] of this.K) {
           this.board.bits.modify(i + ti, j + tj, (v) => v | this.bitmask);
         }
+        this.m = k;
+        this.sequence.push([k, radius]);
         return;
+      }
+      // If we encounter a cell which is fully claimed, i.e. impossible to be
+      // occupied, add it to the unoccupied sequence
+      if (this.board.bits.get(i, j) == ((1 << this.board.players.length) - 1) << 1) {
+        const radius = Math.ceil((L - 1) / 2);
+        this.board.unoccupiedSequence.set(k, radius);
       }
     }
   }
