@@ -90,7 +90,7 @@ export class HUD {
         <span class="hud-disclaimer">* A single player avoids itself</span>
       </div>
     `);
-    this.resultsSection = makeSection('results', 'Results', false, `
+    this.resultsSection = makeSection('results', 'Results for On-Screen Cells', false, `
       <div class="hud-results"></div>
       <div class="hud-results-actions">
         <button class="hud-save-png" type="button">Save as PNG Image</button>
@@ -290,7 +290,9 @@ export class HUD {
     this.lastResultsAt = now;
     const R = Math.max(0, Math.min(this.view.screenRadius, this.board.fullyScannedRadius));
     const sideLength = 2 * R + 1;
-    const cells = (2 * R + 1) * (2 * R + 1);
+    const fullyScannedSideLength = 2 * this.board.fullyScannedRadius + 1;
+    const cells = sideLength * sideLength;
+    const fullyScannedCells = fullyScannedSideLength * fullyScannedSideLength;
     const players = this.board.players;
 
     const SEQ_PREVIEW = 20;
@@ -356,9 +358,15 @@ export class HUD {
     const unoccHead = `<span class="hud-result-name">Unoccupied</span>`;
     const unoccupiedHTML = renderRow('unocc', unoccHead, unoccKs);
 
+    const totalMs = this.view.getTotalRoundsMs();
+    const perCellMs = totalMs / fullyScannedCells;
+    const estMs = perCellMs * foundCells;
+    const renderLine = `<div><span>Est. render time:</span> ${formatDuration(estMs)} (${formatDuration(perCellMs)}/cell)</div>`;
+
     const general = `
       <div class="hud-results-general">
-        <div><span>Total cells:</span> ${foundCells.toLocaleString()} (${foundCells != cells ? 'approx. ' : ''}${sideLength.toLocaleString()}x${sideLength.toLocaleString()})</div>
+        <div><span>Total cells:</span> ${foundCells.toLocaleString()} (${foundCells != cells ? 'approx. ' : ''}${sideLength.toLocaleString()} x ${sideLength.toLocaleString()})</div>
+        ${renderLine}
       </div>
     `;
 
@@ -412,6 +420,14 @@ export class HUD {
     const newUrl = `${window.location.pathname}?players=${encodePlayers(this.configs)}${window.location.hash}`;
     window.history.replaceState(null, '', newUrl);
   }
+}
+
+function formatDuration(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0';
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
+  if (ms >= 1) return `${ms.toFixed(2)} ms`;
+  if (ms >= 1e-3) return `${(ms * 1e3).toFixed(2)} µs`;
+  return `${(ms * 1e6).toFixed(2)} ns`;
 }
 
 function makeSection(name, label, openByDefault, innerHTML) {

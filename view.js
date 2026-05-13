@@ -44,6 +44,11 @@ export class View {
     this.renderQueued = false;
     this.roundsQueued = false;
 
+    // Stopwatch for time spent in the "rounds needed" state. The HUD divides
+    // by the cell-count to get a per-cell render-cost estimate.
+    this.totalRoundsMs = 0;
+    this.roundsActiveStart = null;
+
     // Pointer hover position in canvas pixels, or null. Cached per-color
     // stripe patterns are built lazily for hover highlights.
     this.hoverPos = null;
@@ -65,7 +70,17 @@ export class View {
   resetForNewBoard() {
     this.prerender.radius = -1;
     this.prerender.markDirty();
+    this.totalRoundsMs = 0;
+    this.roundsActiveStart = null;
     this.requestRender();
+  }
+
+  getTotalRoundsMs() {
+    let t = this.totalRoundsMs;
+    if (this.roundsActiveStart !== null) {
+      t += performance.now() - this.roundsActiveStart;
+    }
+    return t;
   }
 
   attachHoverListeners() {
@@ -179,9 +194,14 @@ export class View {
     this.drawCheckerboard(w, h, cellPx);
 
     // Cells-from-origin that just barely fit on screen.
-    this.screenRadius = Math.ceil(Math.max(w, h) * totalScale / 2);
+    this.screenRadius = Math.ceil((Math.max(w, h) * totalScale - 1) / 2);
+    const now = performance.now();
     if (this.board.fullyScannedRadius <= this.screenRadius) {
+      if (this.roundsActiveStart === null) this.roundsActiveStart = now;
       this.requestAdditionalRounds();
+    } else if (this.roundsActiveStart !== null) {
+      this.totalRoundsMs += now - this.roundsActiveStart;
+      this.roundsActiveStart = null;
     }
 
     const imageAlpha = clamp01((FADE_HIGH - cellPx) / (FADE_HIGH - FADE_LOW));
