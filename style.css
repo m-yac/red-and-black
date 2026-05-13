@@ -24,6 +24,21 @@ canvas {
   min-height: 0;
 }
 
+.hud-footer {
+  align-self: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 4px 10px;
+  font-size: 12px;
+  text-align: center;
+  color: #555;
+}
+.hud-footer a {
+  color: inherit;
+}
+
 .hud {
   background: rgba(255, 255, 255, 0.92);
   color: #111;

@@ -75,6 +75,26 @@ function pieceForVector(dx, dy) {
   return FAIRY_PIECES.find((p) => p.m === a && p.n === b) || null;
 }
 
+function configParts(configs) {
+  return configs.map((c) => {
+    const colorEntry = COLOR_PALETTE.find((p) => p.bkg === c.bkgClr);
+    const color = colorEntry ? colorEntry.name : 'x';
+    const piece = pieceForVector(c.dx, c.dy);
+    const pieceLabel = piece ? piece.name.toLowerCase() : `${c.dx}.${c.dy}`;
+    return { color, pieceLabel };
+  });
+}
+
+function configsFilename(configs) {
+  return configParts(configs).map(({ color, pieceLabel }) => `${color}_${pieceLabel}`).join('_');
+}
+
+function configsTitle(configs) {
+  return configParts(configs)
+    .map(({ color, pieceLabel }) => `${capitalize(color)} ${capitalize(pieceLabel)}`)
+    .join(', ');
+}
+
 export class HUD {
   constructor(board, view) {
     this.board = board;
@@ -90,34 +110,45 @@ export class HUD {
         <span class="hud-disclaimer">* A single player avoids itself</span>
       </div>
     `);
-    this.resultsSection = makeSection('results', 'Results for On-Screen Cells', false, `
-      <div class="hud-results"></div>
+    this.summarySection = makeSection('summary', 'General Stats', true, `
+      <div class="hud-results-general"></div>
+      <div class="hud-results-general"></div>
       <div class="hud-results-actions">
         <button class="hud-save-png" type="button">Save as PNG Image</button>
       </div>
     `);
+    this.detailsSection = makeSection('details', 'Detailed Stats for On-Screen Cells', false, `
+      <div class="hud-results"></div>
+    `);
+    this.footer = document.createElement('div');
+    this.footer.className = 'hud-footer';
+    this.footer.innerHTML = `<a href="https://github.com/m-yac/red-and-black#gallery" target="_blank" rel="noopener">Gallery</a> &bull; <a href="https://github.com/m-yac/red-and-black" target="_blank" rel="noopener">Github</a> &bull; <a href="https://yacavone.net" target="_blank" rel="noopener">My Website</a>`;
     this.root = document.createElement('div');
     this.root.className = 'hud-stack';
-    this.root.append(this.playersSection, this.resultsSection);
+    this.root.append(this.playersSection, this.summarySection, this.detailsSection, this.footer);
     document.body.appendChild(this.root);
 
     this.rowsEl = this.playersSection.querySelector('.hud-rows');
     this.addBtn = this.playersSection.querySelector('.hud-add');
     this.disclaimerEl = this.playersSection.querySelector('.hud-disclaimer');
-    this.resultsEl = this.resultsSection.querySelector('.hud-results');
-    this.savePngBtn = this.resultsSection.querySelector('.hud-save-png');
+    this.summaryEls = this.summarySection.querySelectorAll('.hud-results-general');
+    this.detailsEl = this.detailsSection.querySelector('.hud-results');
+    this.savePngBtn = this.summarySection.querySelector('.hud-save-png');
     this.savePngBtn.addEventListener('click', () => this.savePNG());
+    const initialLabel = configsTitle(this.configs);
+    if (initialLabel) document.title = initialLabel;
     // player index -> number of sequence entries currently shown (default SEQ_PREVIEW)
     this.shownSeqCounts = new Map();
     this.lastResultsAt = 0;
     this.resultsTimer = null;
 
-    for (const section of [this.playersSection, this.resultsSection]) {
+    for (const section of [this.playersSection, this.summarySection, this.detailsSection]) {
       const btn = section.querySelector('.hud-toggle');
       btn.addEventListener('click', () => {
         const open = section.classList.toggle('hud-open');
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (section === this.resultsSection && open) this.renderResults();
+        if (open && section === this.summarySection) this.renderSummary();
+        if (open && section === this.detailsSection) this.renderDetails();
       });
     }
 
@@ -274,7 +305,32 @@ export class HUD {
   }
 
   renderResults() {
-    if (!this.resultsSection.classList.contains('hud-open')) return;
+    this.renderSummary();
+    this.renderDetails();
+  }
+
+  renderSummary() {
+    if (!this.summarySection.classList.contains('hud-open')) return;
+    const R = Math.max(0, Math.min(this.view.screenRadius, this.board.fullyScannedRadius));
+    const sideLength = 2 * R + 1;
+    const fullyScannedSideLength = 2 * this.board.fullyScannedRadius + 1;
+    const cells = sideLength * sideLength;
+    const fullyScannedCells = fullyScannedSideLength * fullyScannedSideLength;
+    const totalMs = this.view.getTotalRoundsMs();
+    const perCellMs = totalMs / fullyScannedCells;
+    const estMs = perCellMs * cells;
+    this.summaryEls[0].innerHTML = `
+      <div><span>Total rendered:</span> ${fullyScannedCells.toLocaleString()} (${fullyScannedSideLength.toLocaleString()} x ${fullyScannedSideLength.toLocaleString()})</div>
+      <div><span>Total render time:</span> ${formatDuration(totalMs)} (${formatDuration(perCellMs)}/cell)</div>
+    `;
+    this.summaryEls[1].innerHTML = `
+      <div><span>On-screen:</span> ${cells.toLocaleString()} (${sideLength.toLocaleString()} x ${sideLength.toLocaleString()})</div>
+      <div><span>Est. on-screen render time:</span> ${formatDuration(estMs)}</div>
+    `;
+  }
+
+  renderDetails() {
+    if (!this.detailsSection.classList.contains('hud-open')) return;
     // Throttle to ~4 Hz: getStats walks O(R^2) cells, too costly per rAF.
     const now = performance.now();
     const minGap = 250;
@@ -282,7 +338,7 @@ export class HUD {
       if (!this.resultsTimer) {
         this.resultsTimer = setTimeout(() => {
           this.resultsTimer = null;
-          this.renderResults();
+          this.renderDetails();
         }, minGap - (now - this.lastResultsAt));
       }
       return;
@@ -290,18 +346,14 @@ export class HUD {
     this.lastResultsAt = now;
     const R = Math.max(0, Math.min(this.view.screenRadius, this.board.fullyScannedRadius));
     const sideLength = 2 * R + 1;
-    const fullyScannedSideLength = 2 * this.board.fullyScannedRadius + 1;
     const cells = sideLength * sideLength;
-    const fullyScannedCells = fullyScannedSideLength * fullyScannedSideLength;
     const players = this.board.players;
 
     const SEQ_PREVIEW = 20;
     const SEQ_STEP = 100;
 
-    let foundCells = 0;
     const renderRow = (key, headHTML, ks) => {
       const count = ks.length;
-      foundCells += count;
       const pct = cells > 0 ? (100 * count / cells) : 0;
       const shown = Math.min(count, this.shownSeqCounts.get(key) ?? SEQ_PREVIEW);
       const seq = ks.slice(0, shown);
@@ -342,6 +394,7 @@ export class HUD {
       const ks = [];
       for (const [k, kR] of p.sequence) {
         if (kR <= R) ks.push(k);
+        else break;
       }
       const head = `
         <span class="hud-result-dot" style="background:${p.bkgClr}"></span>
@@ -358,28 +411,16 @@ export class HUD {
     const unoccHead = `<span class="hud-result-name">Unoccupied</span>`;
     const unoccupiedHTML = renderRow('unocc', unoccHead, unoccKs);
 
-    const totalMs = this.view.getTotalRoundsMs();
-    const perCellMs = totalMs / fullyScannedCells;
-    const estMs = perCellMs * foundCells;
-    const renderLine = `<div><span>Est. render time:</span> ${formatDuration(estMs)} (${formatDuration(perCellMs)}/cell)</div>`;
+    this.detailsEl.innerHTML = playerHTML + unoccupiedHTML;
 
-    const general = `
-      <div class="hud-results-general">
-        <div><span>Total cells:</span> ${foundCells.toLocaleString()} (${foundCells != cells ? 'approx. ' : ''}${sideLength.toLocaleString()} x ${sideLength.toLocaleString()})</div>
-        ${renderLine}
-      </div>
-    `;
-
-    this.resultsEl.innerHTML = playerHTML + unoccupiedHTML + general;
-
-    for (const link of this.resultsEl.querySelectorAll('.hud-seq-link')) {
+    for (const link of this.detailsEl.querySelectorAll('.hud-seq-link')) {
       link.addEventListener('click', () => {
         const key = link.getAttribute('data-key');
         const act = link.getAttribute('data-act');
         const cur = this.shownSeqCounts.get(key) ?? SEQ_PREVIEW;
         if (act === 'more') this.shownSeqCounts.set(key, cur + SEQ_STEP);
         else this.shownSeqCounts.set(key, SEQ_PREVIEW);
-        this.renderResults();
+        this.renderDetails();
       });
     }
   }
@@ -396,13 +437,7 @@ export class HUD {
     out.width = size;
     out.height = size;
     out.getContext('2d').drawImage(src, offset, offset, size, size, 0, 0, size, size);
-    const name = this.configs.map((c) => {
-      const colorEntry = COLOR_PALETTE.find((p) => p.bkg === c.bkgClr);
-      const color = colorEntry ? colorEntry.name : 'x';
-      const piece = pieceForVector(c.dx, c.dy);
-      const pieceLabel = piece ? piece.name.toLowerCase() : `${c.dx}.${c.dy}`;
-      return `${color}_${pieceLabel}`;
-    }).join('_');
+    const name = configsFilename(this.configs);
     out.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -419,6 +454,8 @@ export class HUD {
   syncURL() {
     const newUrl = `${window.location.pathname}?players=${encodePlayers(this.configs)}${window.location.hash}`;
     window.history.replaceState(null, '', newUrl);
+    const label = configsTitle(this.configs);
+    if (label) document.title = label;
   }
 }
 
