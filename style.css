@@ -313,3 +313,53 @@ canvas {
 .hud-seq-link:hover {
   color: #03a;
 }
+
+.hud-example {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hud-example-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 4px;
+  cursor: pointer;
+  image-rendering: pixelated;
+}
+.hud-example-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.hud-example-nav {
+  flex: 0 0 auto;
+  width: 32px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: transparent;
+  color: #333;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hud-example-nav:hover {
+  background: #eee;
+}
+.hud-example-caption {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  padding: 4px 8px;
+  background: transparent;
+  color: #111;
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+.hud-example-caption:hover {
+  text-decoration: underline;
+}

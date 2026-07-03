@@ -14,9 +14,7 @@ export const COLOR_PALETTE = [
 
 const MAX_PLAYERS = COLOR_PALETTE.length - 1;
 
-export function parsePlayersFromURL() {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('players');
+export function parsePlayers(raw) {
   if (!raw) return null;
   const configs = [];
   for (const part of raw.split('_')) {
@@ -29,6 +27,20 @@ export function parsePlayersFromURL() {
   }
   return configs.length ? configs : null;
 }
+
+export function parsePlayersFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  return parsePlayers(params.get('players'));
+}
+
+// Gallery examples mirrored from the README. Captions are auto-generated from
+// the players string in the same way the page title is.
+const EXAMPLES = [
+  { img: 'red_knight_yellow_antelope_purple_commuter_4321x4321.png', players: '1.2.r_3.4.y_4.4.p' },
+  { img: 'yellow_flamingo_red_giraffe_black_antelope_7561x7561.png', players: '1.6.y_1.4.r_3.4.b' },
+  { img: 'black_knight_red_antelope_1081x1081.png', players: '1.2.b_3.4.r' },
+  { img: 'cyan_ferz_purple_flamingo_2161x2161.png', players: '1.1.c_1.6.p' },
+];
 
 function encodePlayers(configs) {
   return configs.map((c) => {
@@ -120,12 +132,22 @@ export class HUD {
     this.detailsSection = makeSection('details', 'Detailed Stats for On-Screen Cells', false, `
       <div class="hud-results"></div>
     `);
+    this.examplesSection = makeSection('examples', 'Example Gallery', false, `
+      <div class="hud-example">
+        <img class="hud-example-img" alt="">
+        <div class="hud-example-controls">
+          <button class="hud-example-nav hud-example-prev" type="button" aria-label="Previous example">‹</button>
+          <button class="hud-example-caption" type="button"></button>
+          <button class="hud-example-nav hud-example-next" type="button" aria-label="Next example">›</button>
+        </div>
+      </div>
+    `);
     this.footer = document.createElement('div');
     this.footer.className = 'hud-footer';
-    this.footer.innerHTML = `<a href="https://github.com/m-yac/red-and-black#gallery" target="_blank" rel="noopener">Gallery</a> &bull; <a href="https://github.com/m-yac/red-and-black" target="_blank" rel="noopener">Github</a> &bull; <a href="https://yacavone.net" target="_blank" rel="noopener">My Website</a>`;
+    this.footer.innerHTML = `<a href="https://github.com/m-yac/red-and-black" target="_blank" rel="noopener">Github</a> &bull; <a href="https://yacavone.net" target="_blank" rel="noopener">My Website</a>`;
     this.root = document.createElement('div');
     this.root.className = 'hud-stack';
-    this.root.append(this.playersSection, this.summarySection, this.detailsSection, this.footer);
+    this.root.append(this.playersSection, this.summarySection, this.detailsSection, this.examplesSection, this.footer);
     document.body.appendChild(this.root);
 
     this.rowsEl = this.playersSection.querySelector('.hud-rows');
@@ -135,6 +157,14 @@ export class HUD {
     this.detailsEl = this.detailsSection.querySelector('.hud-results');
     this.savePngBtn = this.summarySection.querySelector('.hud-save-png');
     this.savePngBtn.addEventListener('click', () => this.savePNG());
+    this.exampleIndex = 0;
+    this.exampleImg = this.examplesSection.querySelector('.hud-example-img');
+    this.exampleCaption = this.examplesSection.querySelector('.hud-example-caption');
+    this.examplesSection.querySelector('.hud-example-prev').addEventListener('click', () => this.stepExample(-1));
+    this.examplesSection.querySelector('.hud-example-next').addEventListener('click', () => this.stepExample(1));
+    this.exampleImg.addEventListener('click', () => this.loadExample());
+    this.exampleCaption.addEventListener('click', () => this.loadExample());
+    this.renderExample();
     const initialLabel = configsTitle(this.configs);
     if (initialLabel) document.title = initialLabel;
     // player index -> number of sequence entries currently shown (default SEQ_PREVIEW)
@@ -142,13 +172,22 @@ export class HUD {
     this.lastResultsAt = 0;
     this.resultsTimer = null;
 
-    for (const section of [this.playersSection, this.summarySection, this.detailsSection]) {
+    // Stats sections temporarily collapsed while the gallery is open, so they
+    // can be restored to their prior state when it closes again.
+    this.statsToRestore = [];
+    for (const section of [this.playersSection, this.summarySection, this.detailsSection, this.examplesSection]) {
       const btn = section.querySelector('.hud-toggle');
       btn.addEventListener('click', () => {
-        const open = section.classList.toggle('hud-open');
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (open && section === this.summarySection) this.renderSummary();
-        if (open && section === this.detailsSection) this.renderDetails();
+        const open = !section.classList.contains('hud-open');
+        this.setSectionOpen(section, open);
+        if (section === this.examplesSection) this.onExamplesToggle(open);
+        // Manually opening a stats section closes the gallery outright — the
+        // user chose this section, so don't queue it for auto-restore.
+        if (open && (section === this.summarySection || section === this.detailsSection)
+            && this.examplesSection.classList.contains('hud-open')) {
+          this.setSectionOpen(this.examplesSection, false);
+          this.statsToRestore = [];
+        }
       });
     }
 
@@ -456,6 +495,55 @@ export class HUD {
     window.history.replaceState(null, '', newUrl);
     const label = configsTitle(this.configs);
     if (label) document.title = label;
+  }
+
+  setSectionOpen(section, open) {
+    section.classList.toggle('hud-open', open);
+    const btn = section.querySelector('.hud-toggle');
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open && section === this.summarySection) this.renderSummary();
+    if (open && section === this.detailsSection) this.renderDetails();
+  }
+
+  // Opening the gallery collapses any open stats sections, remembering which
+  // were open; closing it re-expands exactly those.
+  onExamplesToggle(open) {
+    const statsSections = [this.summarySection, this.detailsSection];
+    if (open) {
+      this.statsToRestore = statsSections.filter((s) => s.classList.contains('hud-open'));
+      for (const s of this.statsToRestore) this.setSectionOpen(s, false);
+    } else {
+      for (const s of this.statsToRestore) this.setSectionOpen(s, true);
+      this.statsToRestore = [];
+    }
+  }
+
+  renderExample() {
+    const ex = EXAMPLES[this.exampleIndex];
+    const caption = configsTitle(parsePlayers(ex.players));
+    this.exampleImg.src = `./images/${ex.img}`;
+    this.exampleImg.alt = caption;
+    this.exampleCaption.textContent = caption;
+  }
+
+  stepExample(delta) {
+    const n = EXAMPLES.length;
+    this.exampleIndex = (this.exampleIndex + delta + n) % n;
+    this.renderExample();
+  }
+
+  // Load the currently-shown example, replacing the players but leaving the
+  // camera (zoom/pan) untouched — apply() only rebuilds the board.
+  loadExample() {
+    const configs = parsePlayers(EXAMPLES[this.exampleIndex].players);
+    if (!configs) return;
+    this.configs = configs;
+    this.renderRows();
+    this.apply();
+    if (this.examplesSection.classList.contains('hud-open')) {
+      this.setSectionOpen(this.examplesSection, false);
+      this.onExamplesToggle(false);
+    }
   }
 }
 
